@@ -114,3 +114,29 @@ test('iPad-Texterkennung: Bezeichnungen und Werte auf getrennten Zeilen', () => 
   assert.equal(r.total, 91.28);
   assert.equal(r.receipt_date, '2026-10-03');
 });
+
+test('Produktname vom Bon statt Kategorie (TotalEnergies, Excellium)', () => {
+  const text = `TotalEnergies Tankstelle
+Bahnstr. 174
+41069 Mönchengladbach
+* 35,20 Liter # 02 *
+Excellium Super Plus * €    86,20*A
+2,449 € / Liter
+Summe € 86,20
+Mastercard € 86,20
+19,00 % MWST. A € 13,76
+Summe Netto € 72,44
+Datum/Uhrzeit 18.09.2026 19:24:25`;
+  const r = parseReceipt(text, { now });
+  assert.equal(r.fuel_type, 'Excellium Super Plus');
+  assert.equal(r.station, 'TotalEnergies Mönchengladbach');
+  assert.equal(r.liters, 35.2);
+  assert.equal(r.price_per_liter, 2.449);
+  assert.equal(r.total, 86.2);
+  assert.equal(r.receipt_date, '2026-09-18');
+});
+
+test('Produktname in Großbuchstaben wird lesbar geschrieben', () => {
+  const r = parseReceipt('Shell\nV-POWER DIESEL\n40,00 l x 1,899 EUR/l\nSumme 75,96', { now });
+  assert.equal(r.fuel_type, 'V-Power Diesel');
+});

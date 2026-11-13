@@ -247,9 +247,45 @@ function findStation(lines) {
   return first ? [first.trim(), city].filter(Boolean).join(' ') : city;
 }
 
-function findFuel(text) {
-  for (const [name, re] of FUELS) if (re.test(text)) return name;
+/** Kategorie der Sorte (z. B. „Premium Benzin“) – nur noch Notlösung, wenn kein Produktname lesbar ist. */
+export function findFuelCategory(text) {
+  for (const [name, re] of FUELS) if (re.test(String(text ?? ''))) return name;
   return null;
+}
+
+/** „EXCELLIUM SUPER PLUS“ → „Excellium Super Plus“; Bezeichnungen mit Ziffern (E10, 98) bleiben. */
+function tidyCase(s) {
+  if (s !== s.toUpperCase()) return s;
+  return s
+    .split(' ')
+    .map((w) => (/\d/.test(w) ? w : w.toLowerCase().replace(/(^|-)(\p{L})/gu, (_, p, c) => p + c.toUpperCase())))
+    .join(' ');
+}
+
+/**
+ * Produktname so, wie er auf dem Bon steht – ohne Säulennummer, Mengen, Preise und Symbole.
+ * Beispiel: „Excellium Super Plus * €   86,20*A“ → „Excellium Super Plus“
+ */
+function cleanProductName(line) {
+  const s = line
+    .replace(/s[äa]ule\s*:?\s*(nr\.?)?\s*\d+/gi, ' ')
+    .replace(/\b(zapf\w*|nr|s)\.?\s*\d+\b/gi, ' ')
+    .replace(/-?\d+\s?[.,]\s?\d+/g, ' ')
+    .replace(/[*#€@×:|]|\beur\b|\b(l|ltr|liter)\b|\/|\bx\b/gi, ' ')
+    .replace(/\s+[A-Z]$/, '')
+    .replace(/\s+/g, ' ')
+    .replace(/^[\s\-.,]+|[\s\-.,]+$/g, '');
+  return tidyCase(s);
+}
+
+function findFuel(lines, text) {
+  const category = findFuelCategory(text);
+  if (!category) return null;
+  const re = FUELS.find(([name]) => name === category)[1];
+  const line = lines.find((l) => re.test(l));
+  const name = line ? cleanProductName(line) : '';
+  const plausible = name.length >= 3 && name.length <= 40 && /\p{L}{2,}/u.test(name) && !/summe|betrag|gesamt|mwst|netto/i.test(name);
+  return plausible ? name : category;
 }
 
 export function parseReceipt(text, { now } = {}) {
@@ -266,7 +302,7 @@ export function parseReceipt(text, { now } = {}) {
     liters: amounts.liters,
     price_per_liter: amounts.price_per_liter,
     total: amounts.total,
-    fuel_type: findFuel(cleaned),
+    fuel_type: findFuel(lines, cleaned),
     consistent: amounts.consistent,
   };
 }

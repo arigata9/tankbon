@@ -4,7 +4,7 @@ import crypto from 'node:crypto';
 import express from 'express';
 import multer from 'multer';
 import * as db from './db.js';
-import { parseReceipt } from './parser.js';
+import { parseReceipt, findFuelCategory } from './parser.js';
 import { recognize, normalizeForStorage, isImage, isPdf, isReadableImage, processPdf } from './ocr.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -259,7 +259,14 @@ app.use((err, _req, res, _next) => {
 
 // Erst den Webserver starten, dann (im Hintergrund) die Datenbank anbinden.
 const server = app.listen(PORT, '0.0.0.0', () => console.log(`Tankbon läuft auf Port ${PORT} (im Container)`));
-db.migrate();
+db.migrate()
+  .then(() =>
+    // Früher wurde nur die Kategorie gespeichert (z. B. „Premium Benzin“). Einmalig durch den
+    // Produktnamen vom Bon ersetzen – aber nur, wo der Wert noch unverändert vom Parser stammt.
+    db.relabelFuelTypesOnce((row) =>
+      row.fuel_type === findFuelCategory(row.ocr_text) ? parseReceipt(row.ocr_text).fuel_type : null))
+  .then((n) => n && console.log(`Kraftstoff-Bezeichnung bei ${n} Bon(s) auf den Produktnamen umgestellt.`))
+  .catch((err) => console.error('Datenkorrektur fehlgeschlagen:', err.message));
 
 for (const sig of ['SIGTERM', 'SIGINT']) {
   process.on(sig, () => {

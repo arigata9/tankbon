@@ -38,8 +38,29 @@ CREATE TABLE IF NOT EXISTS settings (
 export const DEFAULT_SETTINGS = { chartMonths: 6 };
 
 export async function getSettings() {
-  const { rows } = await pool.query('SELECT key, value FROM settings');
+  const { rows } = await pool.query('SELECT key, value FROM settings WHERE key = ANY($1)', [Object.keys(DEFAULT_SETTINGS)]);
   return { ...DEFAULT_SETTINGS, ...Object.fromEntries(rows.map((r) => [r.key, r.value])) };
+}
+
+/**
+ * Einmalige Datenkorrektur, gemerkt in der Tabelle settings.
+ * fix(row) liefert den neuen Kraftstoff-Namen oder null, wenn nichts zu ändern ist.
+ */
+export async function relabelFuelTypesOnce(fix) {
+  const key = 'migration:fuel-product-names';
+  const done = await pool.query('SELECT 1 FROM settings WHERE key = $1', [key]);
+  if (done.rowCount) return 0;
+  const { rows } = await pool.query('SELECT id, fuel_type, ocr_text FROM receipts WHERE ocr_text IS NOT NULL AND fuel_type IS NOT NULL');
+  let changed = 0;
+  for (const row of rows) {
+    const next = fix(row);
+    if (next && next !== row.fuel_type) {
+      await pool.query('UPDATE receipts SET fuel_type = $1, updated_at = now() WHERE id = $2', [next, row.id]);
+      changed++;
+    }
+  }
+  await pool.query('INSERT INTO settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO NOTHING', [key, JSON.stringify({ changed, at: new Date().toISOString() })]);
+  return changed;
 }
 
 export async function saveSettings(patch) {

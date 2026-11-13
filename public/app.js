@@ -249,6 +249,8 @@ async function renderForm(id) {
   ]);
   const stations = [...new Set(known.map((k) => k.station).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'de'));
   const isDraft = r.status === 'draft';
+  // Vorschläge: zuerst bereits verwendete Bezeichnungen, dann die üblichen Sorten.
+  const fuels = [...new Set([...known.map((k) => k.fuel_type).filter(Boolean).sort((a, b) => a.localeCompare(b, 'de')), ...FUEL_TYPES])];
 
   const image = r.has_image
     ? r.image_mime === 'application/pdf'
@@ -273,7 +275,7 @@ async function renderForm(id) {
           <label class="field"><span>Datum</span><input name="receipt_date" type="date" value="${esc(r.receipt_date)}"></label>
           <label class="field"><span>Kraftstoff</span>
             <input name="fuel_type" value="${esc(r.fuel_type)}" list="fuels" autocomplete="off">
-            <datalist id="fuels">${FUEL_TYPES.map((f) => `<option value="${f}">`).join('')}</datalist>
+            <datalist id="fuels">${fuels.map((f) => `<option value="${esc(f)}">`).join('')}</datalist>
           </label>
         </div>
         <div class="grid-3">
