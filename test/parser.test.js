@@ -105,3 +105,12 @@ test('Leerer Text liefert leere Felder statt Fehler', () => {
   assert.equal(r.total, null);
   assert.equal(r.receipt_date, null);
 });
+
+test('iPad-Texterkennung: Bezeichnungen und Werte auf getrennten Zeilen', () => {
+  const text = 'Shell Station\n70565 Stuttgart\nDiesel\nMenge:\n55,02 L\nPreis/L:\n1,659 €\nBetrag:\n91,28 €\n03.10.2026';
+  const r = parseReceipt(text, { now });
+  assert.equal(r.liters, 55.02);
+  assert.equal(r.price_per_liter, 1.659);
+  assert.equal(r.total, 91.28);
+  assert.equal(r.receipt_date, '2026-10-03');
+});

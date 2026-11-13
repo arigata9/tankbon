@@ -144,8 +144,10 @@ app.post('/api/scans', upload.single('image'), asyncRoute(async (req, res) => {
       source = pdf.source;
     }
   } else if (file) {
-    if (!isImage(file.mimetype) && !(await isReadableImage(file.buffer))) {
-      throw new HttpError(415, 'Dateityp wird nicht unterstützt – bitte Bild oder PDF senden');
+    const readable = await isReadableImage(file.buffer);
+    // HEIC kann der Server nicht lesen. Mit Text vom iPad reicht es trotzdem, nur ohne Vorschaubild.
+    if (!readable && !(text && isImage(file.mimetype))) {
+      throw new HttpError(415, 'Bildformat wird nicht unterstützt (z. B. HEIC) – im Kurzbefehl mit „Bild konvertieren“ in JPEG umwandeln');
     }
     const stored = await normalizeForStorage(file.buffer, file.mimetype);
     image = stored.buffer;

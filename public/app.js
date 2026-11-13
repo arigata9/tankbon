@@ -301,17 +301,20 @@ async function renderSetup() {
     <div class="card prose">
       <p>Öffne auf dem iPad die App <b>Kurzbefehle</b>, tippe auf <b>+</b> und benenne den Kurzbefehl exakt <code>${esc(shortcutName)}</code>. Füge dann diese Aktionen hinzu:</p>
       <ol class="steps">
-        <li><b>Dokument scannen</b><br>öffnet den Scanner mit automatischer Kantenerkennung. Das Ergebnis ist ein PDF.</li>
+        <li><b>Foto aufnehmen</b><br>Rückkamera, „Vorschau zeigen“ eingeschaltet lassen, damit du das Foto prüfen und ggf. wiederholen kannst.</li>
+        <li><b>Bild konvertieren</b><br>Eingabe: <i>Foto</i>, Format <b>JPEG</b> (iPads speichern sonst oft HEIC).</li>
+        <li><b>Text aus Bild extrahieren</b><br>Eingabe: <i>Konvertiertes Bild</i>. Die Texterkennung läuft direkt auf dem iPad.</li>
         <li><b>Inhalte von URL abrufen</b><br>
           URL: <code>${esc(baseUrl)}/api/scans</code><br>
           Aufklappen (Pfeil): Methode <b>POST</b>, Anfragetext <b>Formular</b><br>
-          Neues Feld vom Typ <b>Datei</b>, Schlüssel <code>image</code>, Wert <i>Gescanntes Dokument</i>
+          Feld vom Typ <b>Datei</b>: Schlüssel <code>image</code>, Wert <i>Konvertiertes Bild</i><br>
+          Feld vom Typ <b>Text</b>: Schlüssel <code>text</code>, Wert <i>Text aus Bild</i>
         </li>
         <li><b>Wörterbuchwert abrufen</b><br>Wert für Schlüssel <code>reviewUrl</code> in <i>Inhalte von URL</i>.</li>
         <li><b>URLs öffnen</b><br>Eingabe: <i>Wörterbuchwert</i> – öffnet den Bon direkt zur Prüfung.</li>
       </ol>
       <p>Danach startet der Button <b>Bon scannen</b> diesen Kurzbefehl. Beim ersten Lauf fragt iPadOS einmalig, ob der Kurzbefehl auf den Server zugreifen darf.</p>
-      <p><b>Optional – Texterkennung auf dem iPad:</b> Apples Texterkennung ist oft noch etwas genauer. Dafür nach „Dokument scannen“ die Aktionen <b>Bild aus PDF-Seite erstellen</b> und danach <b>Text aus Bild extrahieren</b> einfügen und im Formular ein zusätzliches Feld vom Typ <b>Text</b> mit Schlüssel <code>text</code> und Wert <i>Text aus Bild</i> ergänzen. Ohne dieses Feld erkennt der Server den Text selbst.</p>
+      <p><b>Tipps für gute Ergebnisse:</b> Bon flach auf einen dunklen Untergrund legen, von oben fotografieren, so dass er das Bild weitgehend ausfüllt, und Schatten vermeiden. Fehlt das Feld <code>text</code>, erkennt der Server den Text selbst – das ist bei Fotos aber meist weniger zuverlässig als die Erkennung auf dem iPad.</p>
       <p style="color:var(--muted);font-size:14px;margin:0">Tipp: In Safari über <b>Teilen → Zum Home-Bildschirm</b> lässt sich die App wie eine normale App starten.</p>
     </div>
   `;
