@@ -5,7 +5,7 @@ import express from 'express';
 import multer from 'multer';
 import * as db from './db.js';
 import { parseReceipt } from './parser.js';
-import { recognize, normalizeForStorage, isImage } from './ocr.js';
+import { recognize, normalizeForStorage, isImage, isPdf, isReadableImage, processPdf } from './ocr.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT ?? 3000);
@@ -129,22 +129,34 @@ app.post('/api/scans', upload.single('image'), asyncRoute(async (req, res) => {
 
   if (!file && !text) throw new HttpError(400, 'Weder Bild noch Text übermittelt');
 
-  if (!text && file) {
-    if (!isImage(file.mimetype)) {
-      throw new HttpError(415, 'Für PDFs bitte den Text mitsenden (Kurzbefehl) oder ein Foto hochladen');
-    }
-    text = await recognize(file.buffer);
-    source = 'server';
-  }
-
-  const parsed = parseReceipt(text);
   let image = null;
   let image_mime = null;
-  if (file) {
+  if (file && isPdf(file)) {
+    // „Dokument scannen“ liefert ein PDF: Textebene lesen bzw. Seiten per OCR erkennen.
+    const pdf = await processPdf(file.buffer).catch((err) => {
+      console.error('PDF-Verarbeitung fehlgeschlagen:', err.message);
+      throw new HttpError(422, 'Das PDF konnte nicht gelesen werden');
+    });
+    image = pdf.image;
+    image_mime = pdf.mime;
+    if (!text) {
+      text = pdf.text;
+      source = pdf.source;
+    }
+  } else if (file) {
+    if (!isImage(file.mimetype) && !(await isReadableImage(file.buffer))) {
+      throw new HttpError(415, 'Dateityp wird nicht unterstützt – bitte Bild oder PDF senden');
+    }
     const stored = await normalizeForStorage(file.buffer, file.mimetype);
     image = stored.buffer;
     image_mime = stored.mime;
+    if (!text) {
+      text = await recognize(file.buffer);
+      source = 'server';
+    }
   }
+
+  const parsed = parseReceipt(text);
 
   const receipt = await db.insertReceipt({
     ...parsed,

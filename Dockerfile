@@ -3,6 +3,11 @@ FROM node:22-slim
 ENV NODE_ENV=production
 WORKDIR /app
 
+# poppler-utils: PDFs aus dem iOS-Dokumentenscanner lesen und rendern
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends poppler-utils \
+  && rm -rf /var/lib/apt/lists/*
+
 COPY --chown=node:node package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 

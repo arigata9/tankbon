@@ -205,7 +205,7 @@ async function renderForm(id) {
             <button type="submit" class="btn primary">${isDraft || isNew ? 'Speichern' : 'Änderungen speichern'}</button>
           </div>
         </div>
-        ${r.ocr_text ? `<details class="raw"><summary>Erkannter Text (${r.ocr_source === 'ios' ? 'iPad' : 'Server'})</summary><pre>${esc(r.ocr_text)}</pre></details>` : ''}
+        ${r.ocr_text ? `<details class="raw"><summary>Erkannter Text (${({ ios: 'iPad', 'pdf-text': 'aus PDF', server: 'Server' })[r.ocr_source] ?? 'Server'})</summary><pre>${esc(r.ocr_text)}</pre></details>` : ''}
       </form>
     </div>
   `;
@@ -301,18 +301,17 @@ async function renderSetup() {
     <div class="card prose">
       <p>Öffne auf dem iPad die App <b>Kurzbefehle</b>, tippe auf <b>+</b> und benenne den Kurzbefehl exakt <code>${esc(shortcutName)}</code>. Füge dann diese Aktionen hinzu:</p>
       <ol class="steps">
-        <li><b>Dokument scannen</b><br>öffnet den Scanner mit automatischer Kantenerkennung.</li>
-        <li><b>Text aus Bild extrahieren</b><br>Eingabe: <i>Gescanntes Dokument</i>. Die Texterkennung läuft direkt auf dem iPad.</li>
+        <li><b>Dokument scannen</b><br>öffnet den Scanner mit automatischer Kantenerkennung. Das Ergebnis ist ein PDF.</li>
         <li><b>Inhalte von URL abrufen</b><br>
           URL: <code>${esc(baseUrl)}/api/scans</code><br>
-          Methode: <b>POST</b>, Anfragetext: <b>Formular</b><br>
-          Feld <code>text</code> (Typ Text) → <i>Extrahierter Text</i><br>
-          Feld <code>image</code> (Typ Datei) → <i>Gescanntes Dokument</i>
+          Aufklappen (Pfeil): Methode <b>POST</b>, Anfragetext <b>Formular</b><br>
+          Neues Feld vom Typ <b>Datei</b>, Schlüssel <code>image</code>, Wert <i>Gescanntes Dokument</i>
         </li>
-        <li><b>Wörterbuchwert abrufen</b><br>Wert für Schlüssel <code>reviewUrl</code> aus <i>Inhalte von URL</i>.</li>
+        <li><b>Wörterbuchwert abrufen</b><br>Wert für Schlüssel <code>reviewUrl</code> in <i>Inhalte von URL</i>.</li>
         <li><b>URLs öffnen</b><br>Eingabe: <i>Wörterbuchwert</i> – öffnet den Bon direkt zur Prüfung.</li>
       </ol>
       <p>Danach startet der Button <b>Bon scannen</b> diesen Kurzbefehl. Beim ersten Lauf fragt iPadOS einmalig, ob der Kurzbefehl auf den Server zugreifen darf.</p>
+      <p><b>Optional – Texterkennung auf dem iPad:</b> Apples Texterkennung ist oft noch etwas genauer. Dafür nach „Dokument scannen“ die Aktionen <b>Bild aus PDF-Seite erstellen</b> und danach <b>Text aus Bild extrahieren</b> einfügen und im Formular ein zusätzliches Feld vom Typ <b>Text</b> mit Schlüssel <code>text</code> und Wert <i>Text aus Bild</i> ergänzen. Ohne dieses Feld erkennt der Server den Text selbst.</p>
       <p style="color:var(--muted);font-size:14px;margin:0">Tipp: In Safari über <b>Teilen → Zum Home-Bildschirm</b> lässt sich die App wie eine normale App starten.</p>
     </div>
   `;
