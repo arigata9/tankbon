@@ -1,0 +1,33 @@
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-tankbon}:${POSTGRES_PASSWORD:-tankbon}@db:5432/${POSTGRES_DB:-tankbon}
+      PUBLIC_URL: ${PUBLIC_URL:-}
+      SHORTCUT_NAME: ${SHORTCUT_NAME:-Tankbon scannen}
+      AUTH_USER: ${AUTH_USER:-}
+      AUTH_PASSWORD: ${AUTH_PASSWORD:-}
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-tankbon}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-tankbon}
+      POSTGRES_DB: ${POSTGRES_DB:-tankbon}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  db-data:
