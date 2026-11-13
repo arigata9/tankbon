@@ -3,11 +3,14 @@ FROM node:22-slim
 ENV NODE_ENV=production
 WORKDIR /app
 
-COPY package.json package-lock.json ./
+COPY --chown=node:node package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 
-COPY src ./src
-COPY public ./public
+# --chown: Liegt das Projekt auf einem Dateisystem mit eingeschränkten Rechten
+# (z. B. Unraid-USB-Stick unter /boot, FAT32 mit 0600), könnte der Benutzer "node"
+# die Dateien sonst nicht lesen.
+COPY --chown=node:node src ./src
+COPY --chown=node:node public ./public
 
 USER node
 EXPOSE 3000
