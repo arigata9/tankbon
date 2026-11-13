@@ -3,6 +3,8 @@ services:
     build: .
     restart: unless-stopped
     ports:
+      # Format HOST:CONTAINER – die App lauscht im Container immer auf 3000.
+      # Anderer Port auf dem Host: nur die linke Zahl ändern (z. B. "3009:3000") oder APP_PORT in .env setzen.
       - "${APP_PORT:-3000}:3000"
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-tankbon}:${POSTGRES_PASSWORD:-tankbon}@db:5432/${POSTGRES_DB:-tankbon}

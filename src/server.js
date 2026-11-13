@@ -98,9 +98,18 @@ function parseId(req) {
 
 // ---------- API ----------
 app.get('/api/health', asyncRoute(async (_req, res) => {
+  if (!db.dbState.ready) {
+    return res.status(503).json({ ok: false, database: 'nicht verbunden', error: db.dbState.error, attempts: db.dbState.attempts });
+  }
   await db.pool.query('SELECT 1');
-  res.json({ ok: true });
+  res.json({ ok: true, database: 'verbunden' });
 }));
+
+// Solange die Datenbank fehlt, liefert die API eine verständliche Fehlermeldung statt zu hängen.
+app.use('/api', (req, res, next) => {
+  if (db.dbState.ready || req.path === '/config') return next();
+  res.status(503).json({ error: `Datenbank nicht erreichbar: ${db.dbState.error ?? 'Verbindung wird aufgebaut …'}` });
+});
 
 app.get('/api/config', (req, res) => {
   res.json({ shortcutName: SHORTCUT_NAME, baseUrl: baseUrl(req) });
@@ -218,8 +227,9 @@ app.use((err, _req, res, _next) => {
   res.status(status).json({ error: status >= 500 ? 'Interner Fehler' : err.message });
 });
 
-await db.migrate();
-const server = app.listen(PORT, () => console.log(`Tankbon läuft auf Port ${PORT}`));
+// Erst den Webserver starten, dann (im Hintergrund) die Datenbank anbinden.
+const server = app.listen(PORT, '0.0.0.0', () => console.log(`Tankbon läuft auf Port ${PORT} (im Container)`));
+db.migrate();
 
 for (const sig of ['SIGTERM', 'SIGINT']) {
   process.on(sig, () => {

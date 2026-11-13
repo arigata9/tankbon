@@ -62,6 +62,23 @@ Header `Authorization: Basic <base64 von benutzer:passwort>`.
 | `GET` | `/api/stats?year=` | Kennzahlen |
 | `GET` | `/api/export.csv` | CSV-Export (Excel-kompatibel, deutsches Format) |
 
+## Fehlersuche
+
+**Es antwortet nichts auf dem Port**
+- Die Portzuordnung muss `HOST:3000` lauten, z. B. `3009:3000` – im Container lauscht die App immer auf 3000.
+- Prüfen: `docker compose ps` – steht beim Container `Restarting`, startet er in einer Schleife neu.
+
+**Datenbankfehler**
+Die App startet auch ohne Datenbank und zeigt den Grund direkt an:
+`http://<server>:<port>/api/health` oder auf der Startseite.
+
+- *Benutzername oder Passwort falsch*: Das Passwort aus `.env` wird nur beim **allerersten**
+  Start in das Datenbank-Volume geschrieben. Wurde es danach geändert, entweder das alte
+  Passwort wieder eintragen oder – solange noch keine Daten drin sind – das Volume neu anlegen:
+  `docker compose down -v && docker compose up -d`.
+- *Host nicht gefunden*: In `DATABASE_URL` muss als Host der Service-Name `db` stehen
+  (bzw. die Adresse der externen Datenbank).
+
 ## Entwicklung
 
 ```bash

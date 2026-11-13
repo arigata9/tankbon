@@ -31,15 +31,52 @@ CREATE INDEX IF NOT EXISTS receipts_date_idx ON receipts (receipt_date DESC);
 CREATE INDEX IF NOT EXISTS receipts_status_idx ON receipts (status);
 `;
 
-export async function migrate({ retries = 20, delayMs = 1500 } = {}) {
-  for (let attempt = 1; ; attempt++) {
+// Verbindungsabbrüche im Leerlauf dürfen den Prozess nicht beenden.
+pool.on('error', (err) => console.error('Datenbankverbindung unterbrochen:', err.message));
+
+/** Aktueller Zustand der Datenbank – wird von /api/health und der Oberfläche angezeigt. */
+export const dbState = { ready: false, error: null, attempts: 0 };
+
+function describeError(err) {
+  const target = (() => {
+    try {
+      const u = new URL(process.env.DATABASE_URL);
+      return `${u.hostname}:${u.port || 5432}/${u.pathname.slice(1)} als ${decodeURIComponent(u.username)}`;
+    } catch {
+      return null;
+    }
+  })();
+  if (!process.env.DATABASE_URL) return 'DATABASE_URL ist nicht gesetzt';
+  const hints = {
+    ENOTFOUND: 'Host nicht gefunden – stimmt der Hostname in DATABASE_URL (in Docker Compose: „db“)?',
+    ECONNREFUSED: 'Verbindung abgelehnt – läuft PostgreSQL und ist der Port richtig?',
+    ETIMEDOUT: 'Zeitüberschreitung – Netzwerk/Firewall zwischen App und Datenbank prüfen',
+    EAI_AGAIN: 'Hostname konnte nicht aufgelöst werden – sind App und Datenbank im selben Docker-Netzwerk?',
+    '28P01': 'Benutzername oder Passwort falsch. Hinweis: Das Passwort aus .env gilt nur beim allerersten Start des Datenbank-Volumes.',
+    '3D000': 'Die Datenbank existiert nicht',
+  };
+  const hint = hints[err.code] ?? err.message;
+  return target ? `${hint} (Ziel: ${target})` : hint;
+}
+
+/**
+ * Legt das Schema an. Versucht es unbegrenzt weiter, bis die Datenbank erreichbar ist,
+ * damit der Webserver unabhängig davon läuft und Fehler im Browser sichtbar sind.
+ */
+export async function migrate({ delayMs = 3000 } = {}) {
+  for (;;) {
+    dbState.attempts++;
     try {
       await pool.query(SCHEMA);
+      dbState.ready = true;
+      dbState.error = null;
+      console.log('Datenbank verbunden, Schema ist aktuell.');
       return;
     } catch (err) {
-      // Beim Start per docker compose ist Postgres evtl. noch nicht bereit.
-      if (attempt >= retries) throw err;
-      console.warn(`Datenbank noch nicht erreichbar (${err.code || err.message}), neuer Versuch …`);
+      dbState.error = describeError(err);
+      if (dbState.attempts === 1 || dbState.attempts % 20 === 0) {
+        console.error(`Datenbank nicht erreichbar (Versuch ${dbState.attempts}): ${dbState.error}`);
+      }
       await new Promise((r) => setTimeout(r, delayMs));
     }
   }
