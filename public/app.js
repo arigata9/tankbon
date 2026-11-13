@@ -1,3 +1,5 @@
+import { lineChart, barChart } from './charts.js';
+
 // ---------- Hilfsfunktionen ----------
 const $ = (sel, root = document) => root.querySelector(sel);
 const view = $('#view');
@@ -98,10 +100,11 @@ async function renderHome() {
   const params = new URLSearchParams(location.hash.split('?')[1] ?? '');
   const year = params.get('jahr') ?? '';
   const q = year ? `?year=${year}` : '';
-  const [stats, receipts, drafts] = await Promise.all([
+  const [stats, receipts, drafts, settings] = await Promise.all([
     api(`/api/stats${q}`),
     api(`/api/receipts?status=confirmed${year ? `&year=${year}` : ''}`),
     api('/api/receipts?status=draft'),
+    api('/api/settings'),
   ]);
 
   const yearOpts = ['<option value="">Alle Jahre</option>']
@@ -136,6 +139,20 @@ async function renderHome() {
       <div class="stat"><div class="label">Ø pro Tankvorgang</div><div class="value">${stats.count ? eur(stats.total / stats.count) : '–'}</div></div>
     </div>
 
+    ${receipts.length ? `
+    <div class="charts">
+      <section class="chart-card">
+        <h3>Betrag pro Tankvorgang</h3>
+        <p class="range" data-range></p>
+        <div id="chart-line"></div>
+      </section>
+      <section class="chart-card">
+        <h3>Kosten pro Monat</h3>
+        <p class="range" data-range></p>
+        <div id="chart-bars"></div>
+      </section>
+    </div>` : ''}
+
     ${drafts.length ? `<h2>Noch zu prüfen</h2><div class="list">${drafts.map((r) => row(r, true)).join('')}</div>` : ''}
 
     <div class="head-row" style="margin:32px 0 12px">
@@ -151,10 +168,75 @@ async function renderHome() {
       : `<div class="list empty">${icons.receipt}<div>Noch keine Bons erfasst.</div></div>`}
   `;
 
+  if (receipts.length) drawCharts(receipts, { year, months: settings.chartMonths });
+
   $('#scan').onclick = startScan;
   $('#photo').onclick = () => fileInput.click();
   const sel = $('#year');
   if (sel) sel.onchange = () => (location.hash = sel.value ? `#/?jahr=${sel.value}` : '#/');
+}
+
+const MONTH_NAMES = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
+
+/**
+ * Zeichnet beide Diagramme. Ohne Jahresfilter: die letzten N Monate inkl. des aktuellen.
+ * Mit Jahresfilter: Januar bis Dezember des gewählten Jahres.
+ */
+function drawCharts(receipts, { year, months }) {
+  const now = new Date();
+  const start = year ? new Date(Number(year), 0, 1) : new Date(now.getFullYear(), now.getMonth() - months + 1, 1);
+  const end = year ? new Date(Number(year), 11, 31, 23, 59) : now;
+  const rangeText = year
+    ? `Januar – Dezember ${year}`
+    : `Letzte ${months} Monate · ${MONTH_NAMES[start.getMonth()]} ${start.getFullYear()} – ${MONTH_NAMES[now.getMonth()]} ${now.getFullYear()}`;
+  document.querySelectorAll('[data-range]').forEach((p) => (p.textContent = rangeText));
+
+  const inRange = receipts
+    .filter((r) => r.receipt_date && r.total != null)
+    .map((r) => ({ ...r, date: new Date(`${r.receipt_date}T12:00:00`) }))
+    .filter((r) => r.date >= start && r.date <= end);
+
+  const lineEl = $('#chart-line');
+  const barEl = $('#chart-bars');
+  if (!inRange.length) {
+    const msg = '<div class="chart-empty">Keine Tankvorgänge in diesem Zeitraum</div>';
+    lineEl.innerHTML = msg;
+    barEl.innerHTML = msg;
+    return;
+  }
+
+  const points = inRange.map((r) => ({
+    t: r.date,
+    value: r.total,
+    tip: `<b>${eur(r.total)}</b> · ${dateDe(r.receipt_date)}<br>
+          <span class="muted">${esc(r.station || 'Unbekannte Tankstelle')}</span><br>
+          <span class="muted">${liters(r.liters)} · ${ppl(r.price_per_liter)}</span>`,
+  }));
+  lineChart(lineEl, points, {
+    start, end,
+    label: `Betrag pro Tankvorgang, ${rangeText}`,
+    table: {
+      head: ['Datum', 'Tankstelle', 'Betrag'],
+      rows: [...inRange].sort((a, b) => a.date - b.date).map((r) => [dateDe(r.receipt_date), esc(r.station ?? ''), eur(r.total)]),
+    },
+  });
+
+  const bars = [];
+  for (let d = new Date(start.getFullYear(), start.getMonth(), 1); d <= end; d = new Date(d.getFullYear(), d.getMonth() + 1, 1)) {
+    const inMonth = inRange.filter((r) => r.date.getFullYear() === d.getFullYear() && r.date.getMonth() === d.getMonth());
+    const sum = inMonth.reduce((s, r) => s + r.total, 0);
+    const l = inMonth.reduce((s, r) => s + (r.liters ?? 0), 0);
+    bars.push({
+      date: d,
+      value: Math.round(sum * 100) / 100,
+      tip: `<b>${eur(sum)}</b> · ${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}<br>
+            <span class="muted">${inMonth.length ? `${inMonth.length} × getankt · ${liters(l)}` : 'Nicht getankt'}</span>`,
+    });
+  }
+  barChart(barEl, bars, {
+    label: `Kosten pro Monat, ${rangeText}`,
+    table: { head: ['Monat', 'Kosten'], rows: bars.map((b) => [`${MONTH_NAMES[b.date.getMonth()]} ${b.date.getFullYear()}`, eur(b.value)]) },
+  });
 }
 
 const FUEL_TYPES = ['Super E10', 'Super E5', 'Super Plus', 'Diesel', 'Premium Diesel', 'Premium Benzin', 'LPG', 'CNG', 'AdBlue'];
@@ -291,12 +373,24 @@ async function renderForm(id) {
   }
 }
 
+const CHART_MONTH_OPTIONS = [3, 6, 12, 24];
+
 async function renderSetup() {
-  const { shortcutName, baseUrl } = await getConfig();
+  const [{ shortcutName, baseUrl }, settings] = await Promise.all([getConfig(), api('/api/settings')]);
   view.innerHTML = `
     <a href="#/" class="btn ghost" style="margin:-8px 0 12px -12px">${icons.back} Übersicht</a>
-    <h1>Einrichtung</h1>
-    <p class="sub">Damit „Bon scannen“ den eingebauten Dokumentenscanner von iPadOS nutzt, wird einmalig ein Kurzbefehl angelegt.</p>
+    <h1>Einstellungen</h1>
+
+    <h2 class="section">Diagramme</h2>
+    <div class="card setting-row">
+      <p>Zeitraum der Diagramme in der Übersicht<br><span style="color:var(--muted);font-size:14px">Ist oben ein Jahr gewählt, zeigen die Diagramme immer das ganze Jahr.</span></p>
+      <div class="segmented" id="chart-months" role="group" aria-label="Zeitraum">
+        ${CHART_MONTH_OPTIONS.map((m) => `<button type="button" data-months="${m}" aria-pressed="${m === settings.chartMonths}">${m} Mon.</button>`).join('')}
+      </div>
+    </div>
+
+    <h2 class="section">Kurzbefehl „Bon scannen“</h2>
+    <p class="sub">Damit „Bon scannen“ die Kamera und die Texterkennung von iPadOS nutzt, wird einmalig ein Kurzbefehl angelegt.</p>
 
     <div class="card prose">
       <p>Öffne auf dem iPad die App <b>Kurzbefehle</b>, tippe auf <b>+</b> und benenne den Kurzbefehl exakt <code>${esc(shortcutName)}</code>. Füge dann diese Aktionen hinzu:</p>
@@ -318,6 +412,23 @@ async function renderSetup() {
       <p style="color:var(--muted);font-size:14px;margin:0">Tipp: In Safari über <b>Teilen → Zum Home-Bildschirm</b> lässt sich die App wie eine normale App starten.</p>
     </div>
   `;
+
+  $('#chart-months').addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-months]');
+    if (!btn || btn.getAttribute('aria-pressed') === 'true') return;
+    try {
+      const saved = await api('/api/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chartMonths: Number(btn.dataset.months) }),
+      });
+      document.querySelectorAll('#chart-months [data-months]').forEach((b) =>
+        b.setAttribute('aria-pressed', String(Number(b.dataset.months) === saved.chartMonths)));
+      toast(`Diagramme zeigen jetzt ${saved.chartMonths} Monate`);
+    } catch (err) {
+      toast(err.message);
+    }
+  });
 }
 
 // ---------- Router ----------
@@ -327,7 +438,7 @@ async function route() {
     let m;
     if (path === '/') await renderHome();
     else if (path === '/neu') await renderForm(null);
-    else if (path === '/einrichtung') await renderSetup();
+    else if (path === '/einstellungen' || path === '/einrichtung') await renderSetup();
     else if ((m = path.match(/^\/bon\/(\d+)$/))) await renderForm(Number(m[1]));
     else location.hash = '#/';
     window.scrollTo(0, 0);

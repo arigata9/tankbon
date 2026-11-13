@@ -29,7 +29,29 @@ CREATE TABLE IF NOT EXISTS receipts (
 );
 CREATE INDEX IF NOT EXISTS receipts_date_idx ON receipts (receipt_date DESC);
 CREATE INDEX IF NOT EXISTS receipts_status_idx ON receipts (status);
+CREATE TABLE IF NOT EXISTS settings (
+  key    TEXT PRIMARY KEY,
+  value  JSONB NOT NULL
+);
 `;
+
+export const DEFAULT_SETTINGS = { chartMonths: 6 };
+
+export async function getSettings() {
+  const { rows } = await pool.query('SELECT key, value FROM settings');
+  return { ...DEFAULT_SETTINGS, ...Object.fromEntries(rows.map((r) => [r.key, r.value])) };
+}
+
+export async function saveSettings(patch) {
+  for (const [key, value] of Object.entries(patch)) {
+    await pool.query(
+      `INSERT INTO settings (key, value) VALUES ($1, $2)
+       ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
+      [key, JSON.stringify(value)],
+    );
+  }
+  return getSettings();
+}
 
 // Verbindungsabbrüche im Leerlauf dürfen den Prozess nicht beenden.
 pool.on('error', (err) => console.error('Datenbankverbindung unterbrochen:', err.message));

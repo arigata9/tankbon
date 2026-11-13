@@ -214,6 +214,22 @@ app.delete('/api/receipts/:id', asyncRoute(async (req, res) => {
   res.status(204).end();
 }));
 
+const CHART_MONTH_OPTIONS = [3, 6, 12, 24];
+
+app.get('/api/settings', asyncRoute(async (_req, res) => {
+  res.json(await db.getSettings());
+}));
+
+app.put('/api/settings', asyncRoute(async (req, res) => {
+  const patch = {};
+  if ('chartMonths' in (req.body ?? {})) {
+    const months = Number(req.body.chartMonths);
+    if (!CHART_MONTH_OPTIONS.includes(months)) throw new HttpError(400, 'Ungültiger Zeitraum');
+    patch.chartMonths = months;
+  }
+  res.json(await db.saveSettings(patch));
+}));
+
 app.get('/api/stats', asyncRoute(async (req, res) => {
   const year = /^\d{4}$/.test(req.query.year ?? '') ? req.query.year : undefined;
   res.json(await db.getStats({ year }));
