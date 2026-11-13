@@ -243,13 +243,13 @@ code, .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size:
 
 /* ---------- Schmale Bildschirme (iPad hochkant in Split View, iPhone) ---------- */
 @media (max-width: 900px) {
-  .charts { grid-template-columns: 1fr; }
   .detail { grid-template-columns: 1fr; }
   .receipt-img { position: static; }
   .receipt-img img { max-height: 50vh; }
   .receipt-img iframe { height: 60vh; }
 }
 @media (max-width: 640px) {
+  .charts { grid-template-columns: 1fr; }
   .stats { grid-template-columns: repeat(2, 1fr); }
   .row { grid-template-columns: 1fr auto; gap: 4px 12px; }
   .row .date { grid-column: 1; grid-row: 2; font-size: 13px; }
