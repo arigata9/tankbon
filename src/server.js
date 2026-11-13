@@ -195,6 +195,14 @@ app.get('/api/receipts/:id', asyncRoute(async (req, res) => {
   res.json(receipt);
 }));
 
+/** Gespeicherten Bon-Text mit der aktuellen Erkennung neu auswerten (ändert nichts in der Datenbank). */
+app.get('/api/receipts/:id/reparse', asyncRoute(async (req, res) => {
+  const receipt = await db.getReceipt(parseId(req));
+  if (!receipt) throw new HttpError(404, 'Bon nicht gefunden');
+  if (!receipt.ocr_text) throw new HttpError(422, 'Zu diesem Bon ist kein erkannter Text gespeichert');
+  res.json(parseReceipt(receipt.ocr_text));
+}));
+
 app.get('/api/receipts/:id/image', asyncRoute(async (req, res) => {
   const img = await db.getImage(parseId(req));
   if (!img) throw new HttpError(404, 'Kein Bild vorhanden');

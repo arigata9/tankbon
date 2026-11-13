@@ -289,7 +289,10 @@ async function renderForm(id) {
             <button type="submit" class="btn primary">${isDraft || isNew ? 'Speichern' : 'Änderungen speichern'}</button>
           </div>
         </div>
-        ${r.ocr_text ? `<details class="raw"><summary>Erkannter Text (${({ ios: 'iPad', 'pdf-text': 'aus PDF', server: 'Server' })[r.ocr_source] ?? 'Server'})</summary><pre>${esc(r.ocr_text)}</pre></details>` : ''}
+        ${r.ocr_text ? `<details class="raw"><summary>Erkannter Text (${({ ios: 'iPad', 'pdf-text': 'aus PDF', server: 'Server' })[r.ocr_source] ?? 'Server'})</summary><pre>${esc(r.ocr_text)}</pre>
+          <button type="button" class="btn" id="reparse">Neu auswerten</button>
+          <p class="hint">Liest die Werte mit der aktuellen Erkennung erneut aus dem Text. Gespeichert wird erst mit „Speichern“.</p>
+        </details>` : ''}
       </form>
     </div>
   `;
@@ -322,7 +325,7 @@ async function renderForm(id) {
     const diff = Math.abs(l * p - t);
     check.innerHTML = diff <= 0.05
       ? '<div class="notice ok">Liter × Preis pro Liter ergibt den Betrag. ✓</div>'
-      : `<div class="notice">Liter × Preis pro Liter = ${eur(l * p)} – weicht vom Betrag ab. Bitte prüfen (ggf. Rabatt).</div>`;
+      : `<div class="notice">Liter × Preis pro Liter = ${eur(l * p)}, Betrag ${eur(t)} – Differenz ${eur(Math.abs(l * p - t))}. Bei einem Rabatt ist das richtig, sonst bitte prüfen.</div>`;
   }
   check.addEventListener('click', (e) => {
     const a = e.target.closest('[data-fill]');
@@ -333,6 +336,23 @@ async function renderForm(id) {
   });
   form.addEventListener('input', updateCheck);
   updateCheck();
+
+  const reparse = $('#reparse');
+  if (reparse) {
+    reparse.onclick = async () => {
+      try {
+        const p = await api(`/api/receipts/${r.id}/reparse`);
+        const fields = { station: p.station ?? '', receipt_date: p.receipt_date ?? '', fuel_type: p.fuel_type ?? '',
+          liters: inputNum(p.liters, 2), price_per_liter: inputNum(p.price_per_liter, 3), total: inputNum(p.total, 2) };
+        const changed = Object.entries(fields).filter(([k, v]) => form[k].value !== v).map(([k]) => k);
+        for (const k of changed) form[k].value = fields[k];
+        updateCheck();
+        toast(changed.length ? `${changed.length} ${changed.length === 1 ? 'Feld' : 'Felder'} aktualisiert – bitte prüfen und speichern` : 'Keine Änderungen gefunden');
+      } catch (err) {
+        toast(err.message);
+      }
+    };
+  }
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();

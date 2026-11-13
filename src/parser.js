@@ -67,12 +67,27 @@ const FUELS = [
 const TOTAL_KEYWORDS = /summe|gesamt|total|zu\s*zahlen|zahlbetrag|betrag|endbetrag|\bbar\b|ec[-\s]?karte|girocard|karten?zahlung|visa|master\s*card|maestro|kredit\s*karte|v\s*pay|amex|apple\s*pay|kontaktlos/i;
 const NOT_TOTAL = /mwst|mw\.?\s*st|ust|netto|steuer|tax|r[uü]ckgeld|wechselgeld|gegeben|zur[uü]ck|rabatt|nachlass|punkte|payback|guthaben/i;
 
+/**
+ * Kassenbons nutzen schmale Schriften, in denen die Texterkennung das Liter-„l“ oft als
+ * „1“, „I“ oder „|“ liest (z. B. „42,57 1 x 1,779 EUR/1“). An Stellen, an denen nur
+ * ein „l“ stehen kann, wird es zurückkorrigiert.
+ */
+function fixLiterUnit(text) {
+  return text
+    // „EUR/1“, „€/1“, „Preis/1“, „1,779/1“ → „/l“
+    .replace(/((?:€|eur|euro|preis|\d[.,]\d{3})[ \t]*\/[ \t]*)[1I|](?![\d.,])/gi, '$1l')
+    // „42,57 1 x …“ bzw. „42,57 1“ am Zeilenende → „42,57 l“
+    .replace(/(\d[.,]\d{2,3})[ \t]+[1I|](?=[ \t]*(?:[x×*]|$)|[ \t]{2,})/gim, '$1 l')
+    // „42,571 x …“ – angeklebtes l als dritte Nachkommastelle gelesen
+    .replace(/(\d[.,]\d{2})[1I|](?=[ \t]*[x×*])/gi, '$1 l');
+}
+
 function cleanText(text) {
-  return String(text ?? '')
+  return fixLiterUnit(String(text ?? '')
     .replace(/[⁰¹²³⁴⁵⁶⁷⁸⁹]/g, (c) => SUPERSCRIPT[c])
     .replace(/\r/g, '')
     .replace(/[‚‘’`´]/g, ',')
-    .replace(/ /g, ' ');
+    .replace(/ /g, ' '));
 }
 
 function round(n, d) {
@@ -101,6 +116,9 @@ function extractNumbers(lines) {
         before: line.slice(0, m.index),
         after: line.slice(m.index + m[0].length),
         text: rawLine,
+        // Apples Texterkennung setzt Bezeichnung und Wert oft auf getrennte Zeilen
+        // („Zu zahlen“ / „67,55“). Steht die Zahl am Zeilenanfang, zählt die Zeile darüber.
+        label: line.slice(0, m.index).trim() ? line.slice(0, m.index) : (lines[lineIdx - 1] ?? ''),
       });
     }
   });
@@ -110,7 +128,7 @@ function extractNumbers(lines) {
 function isLiters(n) {
   if (n.value <= 0.5 || n.value > 300) return false;
   if (/^\s*(l|ltr|liter|lt)\b(?!\s*\/)/i.test(n.after)) return true;
-  if (/(menge|liter|abgabe|volumen)\s*:?\s*$/i.test(n.before) && !/^\s*(€|eur)/i.test(n.after)) return true;
+  if (/(menge|liter|abgabe|volumen)\s*:?\s*$/i.test(n.label) && !/^\s*(€|eur)/i.test(n.after)) return true;
   return false;
 }
 
@@ -118,7 +136,7 @@ function isPricePerLiter(n) {
   if (n.value < 0.5 || n.value > 4) return false;
   if (/^\s*(€|eur|euro)?\s*\/\s*(l|ltr|liter)\b/i.test(n.after)) return true;
   if (/(€|eur)\s*\/\s*(l|ltr|liter)\s*:?\s*$/i.test(n.before)) return true;
-  if (/(preis\s*\/?\s*(je\s*)?(l|ltr|liter)|literpreis|grundpreis|einzelpreis)\s*:?\s*(€|eur)?\s*$/i.test(n.before)) return true;
+  if (/(preis\s*\/?\s*(je\s*)?(l|ltr|liter)|literpreis|grundpreis|einzelpreis)\s*:?\s*(€|eur)?\s*$/i.test(n.label)) return true;
   // "42,57 l x 1,779" bzw. "42,57 l * 1,779"
   if (/\b(l|ltr|liter)\s*[x×*@à]\s*(€|eur)?\s*$/i.test(n.before)) return true;
   return false;
@@ -127,7 +145,26 @@ function isPricePerLiter(n) {
 function isTotal(n) {
   if (n.value <= 0 || n.value > 2000 || n.decimals !== 2) return false;
   if (NOT_TOTAL.test(n.text)) return false;
-  return TOTAL_KEYWORDS.test(n.text);
+  if (TOTAL_KEYWORDS.test(n.text)) return true;
+  // Bezeichnung in der Zeile darüber, Zahl allein in dieser Zeile
+  return n.label !== n.before && TOTAL_KEYWORDS.test(n.label) && !NOT_TOTAL.test(n.label) && !/\d[.,]\d{2}/.test(n.label);
+}
+
+const DISCOUNT = /rabatt|nachlass|cpl|ct\s*\/\s*l|coupon|gutschein|vorteil|ersparnis/i;
+
+/**
+ * Rabatte direkt unter dem Kraftstoff (z. B. „Rabatt 5cpl / -1,75 EUR“).
+ * Berücksichtigt werden nur negative Beträge mit Rabatt-Bezeichnung in derselben Zeile
+ * oder der Zeile darüber, höchstens 6 Zeilen nach dem Kraftstoff.
+ */
+function findFuelDiscount(numbers, afterLine) {
+  let sum = 0;
+  for (const n of numbers) {
+    if (n.line <= afterLine || n.value >= 0) continue;
+    if (n.line > afterLine + 6) break;
+    if (DISCOUNT.test(n.text) || DISCOUNT.test(n.label)) sum += -n.value;
+  }
+  return round(sum, 2);
 }
 
 function findAmounts(numbers) {
@@ -156,12 +193,20 @@ function findAmounts(numbers) {
         if (diff > Math.max(0.02, t.value * 0.001)) continue;
         const score = role.l(l) + role.p(p) + role.t(t) - diff;
         // Ohne mindestens zwei klare Hinweise sind Zufallstreffer zu wahrscheinlich.
-        if (role.l(l) + role.p(p) + role.t(t) < 3) continue;
+        // Ausnahme: eindeutig gekennzeichneter Literpreis („EUR/l“) und centgenaue Rechnung –
+        // z. B. Aral-Bons, auf denen die Literzahl ganz ohne Einheit steht.
+        const strongPrice = role.p(p) === 2 && l.decimals === 2 && diff <= 0.011;
+        if (role.l(l) + role.p(p) + role.t(t) < 3 && !strongPrice) continue;
         if (!best || score > best.score) best = { score, l, p, t };
       }
     }
   }
   if (best) {
+    const discount = findFuelDiscount(numbers, Math.max(best.l.line, best.p.line, best.t.line));
+    if (discount > 0 && discount < best.t.value) {
+      // Betrag = tatsächlich bezahlter Kraftstoffpreis; der Literpreis bleibt wie gedruckt.
+      return { liters: best.l.value, price_per_liter: best.p.value, total: round(best.t.value - discount, 2), consistent: false, discount };
+    }
     return { liters: best.l.value, price_per_liter: best.p.value, total: best.t.value, consistent: true };
   }
 
@@ -271,6 +316,7 @@ function cleanProductName(line) {
     .replace(/s[äa]ule\s*:?\s*(nr\.?)?\s*\d+/gi, ' ')
     .replace(/\b(zapf\w*|nr|s)\.?\s*\d+\b/gi, ' ')
     .replace(/-?\d+\s?[.,]\s?\d+/g, ' ')
+    .replace(/\b\d{4,}\b/g, ' ') // Artikelnummern wie „000012“
     .replace(/[*#€@×:|]|\beur\b|\b(l|ltr|liter)\b|\/|\bx\b/gi, ' ')
     .replace(/\s+[A-Z]$/, '')
     .replace(/\s+/g, ' ')
