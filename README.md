@@ -62,6 +62,33 @@ Header `Authorization: Basic <base64 von benutzer:passwort>`.
 | `GET` | `/api/stats?year=` | Kennzahlen |
 | `GET` | `/api/export.csv` | CSV-Export (Excel-kompatibel, deutsches Format) |
 
+## Sichern und Umziehen
+
+Alle Daten – Bons, gescannte Bilder und Einstellungen – liegen in der Datenbank.
+Ein Dump enthält also alles. Befehle im Projektordner ausführen; `tankbon` ist der
+Datenbank-Benutzer bzw. -Name aus `.env` (`POSTGRES_USER` / `POSTGRES_DB`).
+
+**Export** (alter Host):
+
+```bash
+docker compose exec -T db pg_dump -U tankbon -d tankbon -Fc > tankbon.dump
+```
+
+**Import** (neuer Host, nach `git clone` und Kopieren der `.env`):
+
+```bash
+docker compose up -d db
+docker compose exec -T db pg_restore -U tankbon -d tankbon --clean --if-exists --no-owner < tankbon.dump
+docker compose up -d --build
+```
+
+`--clean --if-exists` ersetzt vorhandene Tabellen, der Import kann also gefahrlos
+wiederholt werden. Der Dump ist unabhängig von der PostgreSQL-Version auf dem neuen Host
+(gleich oder neuer).
+
+Für regelmäßige Sicherungen eignet sich derselbe Export-Befehl, z. B. täglich per Cronjob
+(unter Unraid mit dem Plugin „User Scripts“).
+
 ## Fehlersuche
 
 **Es antwortet nichts auf dem Port**
