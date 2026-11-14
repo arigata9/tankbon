@@ -86,8 +86,19 @@ docker compose up -d --build
 wiederholt werden. Der Dump ist unabhängig von der PostgreSQL-Version auf dem neuen Host
 (gleich oder neuer).
 
-Für regelmäßige Sicherungen eignet sich derselbe Export-Befehl, z. B. täglich per Cronjob
-(unter Unraid mit dem Plugin „User Scripts“).
+**Tägliche Sicherung unter Unraid:** `scripts/unraid-backup.sh` sichert die Datenbank,
+prüft die Sicherung, löscht alte Sicherungen (Standard: älter als 30 Tage, mindestens 7
+bleiben) und meldet Fehler über die Unraid-Benachrichtigungen. Im Plugin „User Scripts“
+ein neues Skript anlegen, Schedule „Custom“ `17 3 * * *`, Inhalt:
+
+```bash
+#!/bin/bash
+export BACKUP_DIR=/mnt/user/backups/tankbon
+bash /boot/config/plugins/compose.manager/projects/tankbon/scripts/unraid-backup.sh
+```
+
+Weitere Einstellungen (`KEEP_DAYS`, `KEEP_MIN`, `NOTIFY_ON_SUCCESS=yes`) ebenfalls per `export`.
+Das Skript funktioniert auf jedem Linux-Docker-Host, die Benachrichtigung nur unter Unraid.
 
 ## Fehlersuche
 
