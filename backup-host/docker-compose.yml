@@ -1,0 +1,21 @@
+# PostgreSQL für den Backup-Rechner („Cold Mirror“).
+# Wird von scripts/unraid-mirror.sh befüllt, sobald dieser Rechner läuft.
+#
+# Start:  POSTGRES_PASSWORD=... docker compose up -d   (oder Passwort in einer .env daneben)
+# Dasselbe Passwort auf dem Produktiv-Host in dessen .env als MIRROR_PASSWORD eintragen.
+
+services:
+  db:
+    image: postgres:16-alpine   # gleiche Hauptversion wie die Produktiv-Datenbank
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-tankbon}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD setzen}
+      POSTGRES_DB: ${POSTGRES_DB:-tankbon}
+    ports:
+      - "${MIRROR_PORT:-5432}:5432"
+    volumes:
+      - mirror-data:/var/lib/postgresql/data
+
+volumes:
+  mirror-data:

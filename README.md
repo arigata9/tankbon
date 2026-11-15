@@ -100,6 +100,49 @@ bash /boot/config/plugins/compose.manager/projects/tankbon/scripts/unraid-backup
 Weitere Einstellungen (`KEEP_DAYS`, `KEEP_MIN`, `NOTIFY_ON_SUCCESS=yes`) ebenfalls per `export`.
 Das Skript funktioniert auf jedem Linux-Docker-Host, die Benachrichtigung nur unter Unraid.
 
+## Spiegel auf einen Backup-Server („Cold Mirror“)
+
+`scripts/unraid-mirror.sh` überträgt die Datenbank auf einen zweiten PostgreSQL-Server,
+sobald dieser erreichbar ist – gedacht für einen Backup-Rechner, der nur gelegentlich läuft.
+Bei jedem Aufruf:
+
+1. Backup-Server nicht erreichbar → still beenden.
+2. Prüfsumme über Bons, Bilder und Einstellungen vergleichen; gleich → nichts zu tun.
+3. Sonst die Datenbank **in einer Transaktion** übertragen. Bricht das ab, bleibt auf dem
+   Backup-Server der vorherige, vollständige Stand.
+4. Erneut vergleichen und per Unraid-Benachrichtigung melden.
+
+**Backup-Rechner:** `backup-host/docker-compose.yml` dorthin kopieren und starten
+(gleiche PostgreSQL-Hauptversion, Port 5432 freigegeben):
+
+```bash
+POSTGRES_PASSWORD=ein-sicheres-passwort docker compose up -d
+```
+
+**Produktiv-Host:** in der `.env` ergänzen:
+
+```
+MIRROR_HOST=name-oder-ip-des-backup-rechners
+MIRROR_PASSWORD=ein-sicheres-passwort
+```
+
+Dann in „User Scripts“ ein Skript mit Schedule „Custom“ `23 * * * *` (stündlich) anlegen:
+
+```bash
+#!/bin/bash
+bash /boot/config/plugins/compose.manager/projects/tankbon/scripts/unraid-mirror.sh
+```
+
+Der Spiegel ersetzt keine Sicherung: Ein versehentlich gelöschter Bon fehlt nach dem nächsten
+Abgleich auch dort. Die täglichen Dumps (`unraid-backup.sh`) daher beibehalten.
+
+**Im Notfall** den Spiegel zurückholen: auf dem Backup-Rechner einen Dump ziehen und ihn wie
+unter „Sichern und Umziehen“ beschrieben einspielen:
+
+```bash
+docker compose exec -T db pg_dump -U tankbon -d tankbon -Fc > tankbon.dump
+```
+
 ## Fehlersuche
 
 **Es antwortet nichts auf dem Port**
